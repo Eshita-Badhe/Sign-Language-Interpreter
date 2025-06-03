@@ -1,35 +1,23 @@
-
-import cv2
-import os
-import numpy as np
-from sklearn.neighbors import KNeighborsClassifier
+import pandas as pd
 from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
 import joblib
 
-data_dir = "dataset/asl_alphabet_train"
-X = []
-y = []
+# Load your collected landmark data CSV
+data = pd.read_csv('sign_data.csv', header=None)
 
-# Load and preprocess
-for label in os.listdir(data_dir):
-    folder = os.path.join(data_dir, label)
-    if not os.path.isdir(folder): continue
-    for file in os.listdir(folder)[:200]:  # Limit to 200 per class to speed up
-        img_path = os.path.join(folder, file)
-        img = cv2.imread(img_path)
-        img = cv2.resize(img, (64, 64))
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)  # grayscale
-        X.append(img.flatten())
-        y.append(label)
+# Last column is the label
+X = data.iloc[:, :-1]  # landmarks features
+y = data.iloc[:, -1]   # gesture labels
 
-X = np.array(X)
-y = np.array(y)
-
-# Train KNN
+# Split data to train/test sets
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
-knn = KNeighborsClassifier(n_neighbors=3)
-knn.fit(X_train, y_train)
 
-# Save model
-joblib.dump(knn, "knn_sign_model.joblib")
-print("Model saved successfully.")
+# Train model
+model = RandomForestClassifier(n_estimators=100)
+model.fit(X_train, y_train)
+
+print("Training accuracy:", model.score(X_test, y_test))
+
+# Save the model
+joblib.dump(model, 'sign_model.pkl')

@@ -5,6 +5,12 @@ import cv2
 import threading
 import pyttsx3
 import mediapipe as mp
+import joblib
+import numpy as np
+
+# -----Load trained mode -----
+model = joblib.load('sign_model.pkl')  
+
 
 # ----- Text-to-Speech -----
 def speak(text):
@@ -14,59 +20,25 @@ def speak(text):
     engine.say(text)
     engine.runAndWait()
 
-# ----- Gesture Mapping -----
-def get_gesture(fingers):
-    if fingers == [0,0,0,0,0]:
-        return "Fist"
-    elif fingers == [1,1,1,1,1]:
-        return "Open Hand"
-    elif fingers == [0,1,1,0,0]:
-        return "Peace"
-    elif fingers == [1,1,0,0,1]:
-        return "Rock"
-    elif fingers == [1,0,0,0,0]:
-        return "Thumbs up"
-    elif fingers == [1,0,1,1,1]:
-        return "Nice"
-    elif fingers == [0,1,0,0,0]:
-        return "Index Finger"
-    elif fingers == [1,0,0,0,1]:
-        return "Call Me"
-    elif fingers == [1,1,0,0,0]:
-        return "L - Sign"
-    elif fingers == [0,1,1,1,1]:
-        return "4 Fingers Up"
-    else:
-        return "Unknown"
-
 # ----- Gesture Recognition Function -----
-def recognize_gesture_from_frame(frame, hands, tipIds, mpDraw):
+def recognize_gesture_from_frame(frame, hands, mpDraw):
     h, w, _ = frame.shape
     imgRGB = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     results = hands.process(imgRGB)
 
-    lmList = []
     if results.multi_hand_landmarks:
         for handLms in results.multi_hand_landmarks:
             mpDraw.draw_landmarks(frame, handLms, mp.solutions.hands.HAND_CONNECTIONS)
-            for id, lm in enumerate(handLms.landmark):
-                cx, cy = int(lm.x * w), int(lm.y * h)
-                lmList.append([id, cx, cy])
+            # Extract normalized landmarks (x, y, z)
+            landmark_points = []
+            for lm in handLms.landmark:
+                landmark_points.extend([lm.x, lm.y, lm.z])
 
-    fingers = []
-    if len(lmList) != 0:
-        if lmList[tipIds[0]][1] > lmList[tipIds[0] - 1][1]:
-            fingers.append(1)
-        else:
-            fingers.append(0)
+            # Predict gesture using trained model
+            prediction = model.predict([landmark_points])[0]
 
-        for id in range(1, 5):
-            if lmList[tipIds[id]][2] < lmList[tipIds[id] - 2][2]:
-                fingers.append(1)
-            else:
-                fingers.append(0)
+            return prediction, frame
 
-        return get_gesture(fingers), frame
     return "No Hand Detected", frame
 
 # ----- Webcam Mode -----
@@ -79,11 +51,11 @@ def start_webcam():
             return
 
         mpHands = mp.solutions.hands
-        hands = mpHands.Hands(max_num_hands=1)
+        hands = mpHands.Hands(max_num_hands=2)
         mpDraw = mp.solutions.drawing_utils
-        tipIds = [4, 8, 12, 16, 20]
 
         last_prediction = None
+        accumulated_text = ""  # To store all gestures continuously
 
         while True:
             ret, frame = cap.read()
@@ -91,14 +63,17 @@ def start_webcam():
                 break
 
             frame = cv2.flip(frame, 1)
-            gesture, processed_frame = recognize_gesture_from_frame(frame, hands, tipIds, mpDraw)
+            gesture, processed_frame = recognize_gesture_from_frame(frame, hands, mpDraw)
 
+            # Add gesture only if it’s new and valid
             if gesture != last_prediction and gesture not in ["Unknown", "No Hand Detected"]:
-                speak(gesture)
+                accumulated_text += gesture + " "
                 last_prediction = gesture
 
-            result_text.set(f"It says - {gesture}")
-            cv2.putText(processed_frame, gesture, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+            # Update displayed text with all gestures so far
+            result_text.set(f"It says - {accumulated_text.strip()}")
+            cv2.putText(processed_frame, gesture, (10, 30), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
             cv2.imshow("WebCam Gesture Recognition", processed_frame)
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -106,9 +81,15 @@ def start_webcam():
 
         cap.release()
         cv2.destroyAllWindows()
+
+        # Speak out all gestures together at the end
+        if accumulated_text:
+            speak(accumulated_text.strip())
+
         result_text.set("Webcam stopped")
 
     threading.Thread(target=webcam_thread).start()
+
 
 # ----- Upload Mode -----
 def upload_file():
@@ -120,19 +101,20 @@ def upload_file():
     mpHands = mp.solutions.hands
     hands = mpHands.Hands(max_num_hands=1)
     mpDraw = mp.solutions.drawing_utils
-    tipIds = [4, 8, 12, 16, 20]
 
     last_prediction = None
 
     if ext in ["png", "jpg", "jpeg"]:
         img = cv2.imread(file_path)
-        gesture, output_img = recognize_gesture_from_frame(img, hands, tipIds, mpDraw)
-        cv2.putText(output_img, gesture, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-        cv2.imshow("Image Prediction", output_img)
+        gesture, processed_frame = recognize_gesture_from_frame(img, hands, mpDraw)
+
+        cv2.putText(processed_frame, gesture, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        cv2.imshow("Image Prediction", processed_frame)
         speak(gesture)
         result_text.set(f"It says - {gesture}")
         cv2.waitKey(0)
         cv2.destroyAllWindows()
+
     elif ext == "mp4":
         cap = cv2.VideoCapture(file_path)
         while cap.isOpened():
@@ -140,14 +122,15 @@ def upload_file():
             if not ret:
                 break
 
-            gesture, output_img = recognize_gesture_from_frame(frame, hands, tipIds, mpDraw)
+            gesture, processed_frame = recognize_gesture_from_frame(frame, hands, mpDraw)
+
             if gesture != last_prediction and gesture not in ["Unknown", "No Hand Detected"]:
                 speak(gesture)
                 last_prediction = gesture
 
             result_text.set(f"It says - {gesture}")
-            cv2.putText(output_img, gesture, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-            cv2.imshow("Video Prediction", output_img)
+            cv2.putText(processed_frame, gesture, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+            cv2.imshow("Video Prediction", processed_frame)
 
             if cv2.waitKey(20) & 0xFF == ord('q'):
                 break
