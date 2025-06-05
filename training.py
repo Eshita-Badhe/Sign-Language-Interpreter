@@ -1,23 +1,65 @@
+import os
+import cv2
+import mediapipe as mp
+import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.neighbors import KNeighborsClassifier
 import joblib
 
-# Load your collected landmark data CSV
-data = pd.read_csv('sign_data.csv', header=None)
+# Paths
+dataset_path = "asl_alphabet_train"  
+output_csv = "landmark_dataset.csv"
+model_filename = "sign_model.pkl"
 
-# Last column is the label
-X = data.iloc[:, :-1]  # landmarks features
-y = data.iloc[:, -1]   # gesture labels
+# Initialize mediapipe hand detector
+mp_hands = mp.solutions.hands
+mp_drawing = mp.solutions.drawing_utils
+hands = mp_hands.Hands(static_image_mode=True, max_num_hands=1)
 
-# Split data to train/test sets
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+data = []
+labels = []
+
+# Go through each label folder
+for label in os.listdir(dataset_path):
+    label_path = os.path.join(dataset_path, label)
+    if not os.path.isdir(label_path):
+        continue
+
+    print(f"Processing label: {label}")
+    for img_name in os.listdir(label_path):
+        img_path = os.path.join(label_path, img_name)
+        img = cv2.imread(img_path)
+        if img is None:
+            continue
+
+        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        result = hands.process(img_rgb)
+
+        if result.multi_hand_landmarks:
+            for hand_landmarks in result.multi_hand_landmarks:
+                landmark_points = []
+                for lm in hand_landmarks.landmark:
+                    landmark_points.extend([lm.x, lm.y, lm.z])
+                if len(landmark_points) == 63:
+                    data.append(landmark_points)
+                    labels.append(label)
+
+# Save to CSV (optional)
+df = pd.DataFrame(data)
+df['label'] = labels
+df.to_csv(output_csv, index=False, header=False)
+print(f"Saved structured landmark data to {output_csv}")
 
 # Train model
-model = RandomForestClassifier(n_estimators=100)
-model.fit(X_train, y_train)
+X = np.array(data)
+y = np.array(labels)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-print("Training accuracy:", model.score(X_test, y_test))
+knn = KNeighborsClassifier(n_neighbors=3)
+knn.fit(X_train, y_train)
 
-# Save the model
-joblib.dump(model, 'sign_model.pkl')
+# Save model
+joblib.dump(knn, model_filename)
+print(f"Trained model saved to {model_filename}")
+

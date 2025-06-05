@@ -7,6 +7,11 @@ import pyttsx3
 import mediapipe as mp
 import joblib
 import numpy as np
+from dotenv import load_dotenv
+import os
+import google.generativeai as genai
+
+load_dotenv() 
 
 # -----Load trained mode -----
 model = joblib.load('sign_model.pkl')  
@@ -19,6 +24,25 @@ def speak(text):
     engine.setProperty("volume", 0.9)
     engine.say(text)
     engine.runAndWait()
+
+class GestureDetector:
+    def __init__(self, buffer_size=15):
+        self.buffer_size = buffer_size
+        self.buffer = []
+        self.last_confirmed = None
+
+    def confirm(self, prediction):
+        self.buffer.append(prediction)
+        if len(self.buffer) > self.buffer_size:
+            self.buffer.pop(0)
+
+        if len(set(self.buffer)) == 1:
+            if self.buffer[0] != self.last_confirmed:
+                self.last_confirmed = self.buffer[0]
+
+        return self.last_confirmed or "Detecting..."
+
+gesture_detector = GestureDetector(buffer_size=15)
 
 # ----- Gesture Recognition Function -----
 def recognize_gesture_from_frame(frame, hands, mpDraw):
@@ -35,11 +59,46 @@ def recognize_gesture_from_frame(frame, hands, mpDraw):
                 landmark_points.extend([lm.x, lm.y, lm.z])
 
             # Predict gesture using trained model
-            prediction = model.predict([landmark_points])[0]
+            raw_prediction = model.predict([landmark_points])[0]
 
-            return prediction, frame
+            # Use gesture detector to confirm after stability
+            confirmed_prediction = gesture_detector.confirm(raw_prediction)
+
+            return confirmed_prediction, frame
 
     return "No Hand Detected", frame
+
+# Initialize OpenAI with your API key
+genai.configure(api_key=os.environ["GENAI_API_KEY"])
+gemini = genai.GenerativeModel('gemini-2.0-flash')
+
+def polish_text_with_ai(raw_text):
+    prompt = '''Convert the following sequence of sign language letters into a grammatically correct and meaningful English sentence.
+- 'SPACE' means a space between words.
+- Ignore noise words like 'DEL' or treat them as random errors — do not include them in the final output.
+- Some words may have spelling mistakes — correct them using only the given letters.
+- You may remove unwanted or extra letters to form proper words.
+- Do not add any letters not present in the input.
+- Output only the corrected sentence. Do not explain your reasoning.
+Examples:
+Input: K I T K SPACE I J SPACE X F L Y I A N D G
+Output: Kite is flying!
+
+Input: D K I T K
+Output: The kite
+
+Input: K I L E
+Output: Kite
+
+Input: A SPACE D E L H O N E SPACE I S SPACE R I M G I N G
+Output: A phone is ringing.
+
+{raw_text}'''
+
+    response = gemini.generate_content(prompt)
+    polished_sentence = response.text.strip()
+    return polished_sentence
+
 
 # ----- Webcam Mode -----
 def start_webcam():
@@ -84,9 +143,16 @@ def start_webcam():
 
         # Speak out all gestures together at the end
         if accumulated_text:
-            speak(accumulated_text.strip())
+            # Get the polished sentence from AI
+            polished_sentence = polish_text_with_ai(accumulated_text.strip())
 
-        result_text.set("Webcam stopped")
+            # Update Tkinter window with polished sentence
+            result_text.set(f"It says: {polished_sentence}")
+
+            # Optionally, speak the polished sentence
+            speak(polished_sentence)
+        else:
+            result_text.set("No gestures detected")
 
     threading.Thread(target=webcam_thread).start()
 
@@ -110,13 +176,22 @@ def upload_file():
 
         cv2.putText(processed_frame, gesture, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
         cv2.imshow("Image Prediction", processed_frame)
-        speak(gesture)
-        result_text.set(f"It says - {gesture}")
+
+        # Polishing single gesture using Gemini
+        if gesture not in ["Unknown", "No Hand Detected"]:
+            polished_sentence = polish_text_with_ai(gesture)
+            result_text.set(f"AI says: {polished_sentence}")
+            speak(polished_sentence)
+        else:
+            result_text.set(f"It says - {gesture}")
+
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
     elif ext == "mp4":
         cap = cv2.VideoCapture(file_path)
+        accumulated_text = ""  # To accumulate gestures
+
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
@@ -125,7 +200,7 @@ def upload_file():
             gesture, processed_frame = recognize_gesture_from_frame(frame, hands, mpDraw)
 
             if gesture != last_prediction and gesture not in ["Unknown", "No Hand Detected"]:
-                speak(gesture)
+                accumulated_text += gesture + " "
                 last_prediction = gesture
 
             result_text.set(f"It says - {gesture}")
@@ -137,8 +212,17 @@ def upload_file():
 
         cap.release()
         cv2.destroyAllWindows()
+
+        if accumulated_text.strip():
+            polished_sentence = polish_text_with_ai(accumulated_text.strip())
+            result_text.set(f"AI says: {polished_sentence}")
+            speak(polished_sentence)
+        else:
+            result_text.set("No valid gestures detected")
+
     else:
         messagebox.showerror("Unsupported", "Only .jpg, .png, .jpeg, and .mp4 are supported.")
+
 
 # ----- GUI Setup -----
 root = tk.Tk()
