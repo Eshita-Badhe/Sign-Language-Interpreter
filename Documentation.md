@@ -26,7 +26,7 @@ Supports two input modes:
 
 ## Dataset Structure
 
-Organize dataset folders by class label (A-Z), each containing corresponding hand images resized to 64×64 pixels.\n
+Organize dataset folders by class label (A-Z), each containing corresponding hand images resized to 64×64 pixels.
 Taken from Kaggle
 
 
@@ -85,7 +85,7 @@ Taken from Kaggle
 - Support multiple languages with Gemini.
 
 # Summary
-A practical sign language recognition system integrating MediaPipe hand tracking,\n
+A practical sign language recognition system integrating MediaPipe hand tracking,
 KNN classification, and natural language generation for accessible communication.
 
 
