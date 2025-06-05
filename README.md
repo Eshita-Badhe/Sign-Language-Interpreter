@@ -5,7 +5,7 @@ Sign Language Interpreter is an AI-powered system that translates hand gestures 
 
 ---
 
-<img src="https://github.com/Eshita-Badhe/Sign-Language-Interpreter/blob/main/images/architecture.png" alt="Sign Language Interpreter Architecture" style="width:75%;height:auto;">
+<img src="https://github.com/Eshita-Badhe/Sign-Language-Interpreter/blob/main/images/GUI.png" alt="Sign Language Interpreter GUI" style="width:75%;height:auto;">
 
 ## Features
 <ul>
@@ -62,7 +62,7 @@ Sign Language Interpreter is an AI-powered system that translates hand gestures 
 </ol>
 
 ## Example Interface
-<img src="https://github.com/Eshita-Badhe/Sign-Language-Interpreter/blob/main/images/gui_example.png" alt="Sign Language Interpreter GUI" style="width:80%;height:auto;">
+<img src="https://github.com/Eshita-Badhe/Sign-Language-Interpreter/blob/main/images/example.png" alt="Sign Language Interpreter Example" style="width:80%;height:auto;">
 
 ## Contributing
 <p>Contributions are welcome! Feel free to fork the repo, create branches for your features, and submit pull requests with clear explanations.</p>
