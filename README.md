@@ -46,7 +46,6 @@ Sign Language Interpreter is an AI-powered system that translates hand gestures 
     <li>Install required packages:
         <pre><code>pip install -r requirements.txt</code></pre>
     </li>
-    <li>Download the kaggle sign language dataset and train it using training.py and create KNN model file (`sign_model.pkl`) in the root folder.</li>
     <li>Run the application:
         <pre><code>python app.py</code></pre>
     </li>
